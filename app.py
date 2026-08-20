@@ -5,7 +5,7 @@ import io
 import cv2
 import numpy as np
 import qrcode
-from PIL import Image
+from PIL import Image, ImageOps
 import streamlit as st
 
 # --- CONFIGURATION ---
@@ -88,7 +88,7 @@ def get_current_30s_token():
     return hashlib.sha256(f"SECRET_BIN_SEED_{time_block}".encode()).hexdigest()[:8]
 
 def generate_qr_image(data):
-    qr = qrcode.QRCode(box_size=10, border=2)
+    qr = qrcode.QRCode(box_size=10, border=4)
     qr.add_data(data)
     qr.make(fit=True)
     img = qr.make_image(fill_color="#0F172A", back_color="#FFFFFF")
@@ -97,11 +97,24 @@ def generate_qr_image(data):
     return buf.getvalue()
 
 def decode_qr(uploaded_file):
-    image = Image.open(uploaded_file).convert("RGB")
+    if uploaded_file is None:
+        return None
+    image = Image.open(uploaded_file)
+    image = ImageOps.exif_transpose(image).convert("RGB")
+    
+    max_dim = 1024
+    if max(image.size) > max_dim:
+        image.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+        
     img_np = np.array(image)
+    gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+    
     detector = cv2.QRCodeDetector()
-    data, _, _ = detector.detectAndDecode(img_np)
-    return data if data else None
+    data, _, _ = detector.detectAndDecode(gray)
+    
+    if data:
+        return data.strip().rstrip('\x00')
+    return None
 
 # --- UI PAGE CONFIG & THEME INJECTION ---
 st.set_page_config(
@@ -113,7 +126,6 @@ st.set_page_config(
 # Custom Enterprise CSS Overlay
 st.markdown("""
 <style>
-    /* Dark Slate Theme Variables */
     :root {
         --bg-main: #0F172A;
         --bg-card: #1E293B;
@@ -124,14 +136,12 @@ st.markdown("""
         --text-secondary: #94A3B8;
     }
 
-    /* Global Body Adjustments */
     .stApp {
         background-color: var(--bg-main);
         color: var(--text-primary);
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
 
-    /* Clean Card UI Containers */
     .css-card {
         background-color: var(--bg-card);
         border: 1px solid var(--border-color);
@@ -141,7 +151,6 @@ st.markdown("""
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     }
 
-    /* Custom Headers */
     .portal-header {
         text-align: center;
         padding: 10px 0 25px 0;
@@ -159,7 +168,6 @@ st.markdown("""
         margin-top: 6px;
     }
 
-    /* Streamlit Buttons Styling */
     .stButton > button {
         width: 100%;
         background-color: var(--accent-green) !important;
@@ -175,13 +183,11 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
     }
 
-    /* Sidebar Styling */
     section[data-testid="stSidebar"] {
         background-color: #020617;
         border-right: 1px solid var(--border-color);
     }
 
-    /* Input Controls */
     .stTextInput > div > div > input {
         background-color: var(--bg-card) !important;
         border: 1px solid var(--border-color) !important;
@@ -189,7 +195,6 @@ st.markdown("""
         border-radius: 8px !important;
     }
 
-    /* Status Badges */
     .status-badge-verified {
         background-color: rgba(16, 185, 129, 0.15);
         color: var(--accent-green);
@@ -211,7 +216,6 @@ st.markdown("""
         display: inline-block;
     }
 
-    /* File Uploader Custom Styling */
     section[data-testid="stFileUploader"] {
         background-color: var(--bg-card);
         border: 1px dashed var(--border-color);
@@ -219,7 +223,6 @@ st.markdown("""
         padding: 15px;
     }
 
-    /* Hide standard Streamlit header/footer noise */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 </style>
